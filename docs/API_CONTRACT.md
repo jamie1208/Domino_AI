@@ -32,3 +32,9 @@ The demo URL only uses synthetic, nonverified fixture data; use a separate produ
 All graph `edges` have explicit `kind`, nullable `weight`, `evidence_ids`, and `included_in_propagation`.
 All `risk_results` hold `risk_index` and `top_paths`. `risk_index` is a deliberately simplified 0–100 demo index calculated in Python.
 Frontend should display an unmistakable "合成資料／非實際企業分析" label when `data_mode=synthetic_fixture`.
+
+## Optional Phase 4 persistence
+
+When `DATABASE_URL` is set and migrated, `POST /api/demo/analyze` saves the exact response snapshot without changing risk values. Without `DATABASE_URL`, demo analysis remains available but is not presented as persisted.
+
+`GET /api/analyses/{analysis_id}` returns the saved `GraphAnalysisResult` without rerunning the Orchestrator or risk engine. It returns `503` when persistence is not configured or unavailable, and `404` when the database has no matching snapshot.

@@ -22,6 +22,17 @@ npm run dev
 ```
 The default API base URL is `http://127.0.0.1:8000`; override it with `VITE_API_BASE_URL`.
 
+## Start PostgreSQL persistence
+```bash
+docker compose up -d postgres
+cd backend
+export DATABASE_URL='postgresql+psycopg://domino:domino_dev_only@127.0.0.1:5432/domino'
+.venv/bin/alembic upgrade head
+PYTHONPATH=. .venv/bin/python scripts/seed_synthetic.py  # optional synthetic seed
+.venv/bin/uvicorn app.main:app --reload
+```
+See `docs/DATABASE.md` for versioning and temporal-data semantics. The development password is local-only; use secret management outside local development.
+
 Demo request:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/demo/analyze \\

@@ -1,0 +1,181 @@
+"""SQLAlchemy persistence models for versioned graph and analysis snapshots."""
+from datetime import datetime, timezone
+from uuid import uuid4
+
+from sqlalchemy import (
+    BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index,
+    Integer, JSON, String, Text, UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+JsonType = JSON().with_variant(JSONB(), 'postgresql')
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def new_id() -> str:
+    return str(uuid4())
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class CompanyRecord(Base):
+    __tablename__ = 'companies'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    company_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    ticker: Mapped[str | None] = mapped_column(String(40))
+    market: Mapped[str | None] = mapped_column(String(80))
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    metadata_json: Mapped[dict] = mapped_column(JsonType, nullable=False, default=dict)
+    __table_args__ = (
+        UniqueConstraint('company_key', 'version', name='uq_companies_key_version'),
+        CheckConstraint('version > 0', name='ck_companies_version_positive'),
+        CheckConstraint('valid_to IS NULL OR valid_to > valid_from', name='ck_companies_valid_range'),
+        Index('ix_companies_key_validity', 'company_key', 'valid_from', 'valid_to'),
+    )
+
+
+class GraphNodeRecord(Base):
+    __tablename__ = 'graph_nodes'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    node_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    label: Mapped[str] = mapped_column(String(500), nullable=False)
+    company_id: Mapped[str | None] = mapped_column(ForeignKey('companies.id', ondelete='RESTRICT'))
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    data_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    properties: Mapped[dict] = mapped_column(JsonType, nullable=False, default=dict)
+    __table_args__ = (
+        UniqueConstraint('node_key', 'version', name='uq_graph_nodes_key_version'),
+        CheckConstraint("kind IN ('event','region','product','industry','company')", name='ck_graph_nodes_kind'),
+        CheckConstraint('version > 0', name='ck_graph_nodes_version_positive'),
+        CheckConstraint('valid_to IS NULL OR valid_to > valid_from', name='ck_graph_nodes_valid_range'),
+        Index('ix_graph_nodes_key_validity', 'node_key', 'valid_from', 'valid_to'),
+    )
+
+
+class GraphEdgeRecord(Base):
+    __tablename__ = 'graph_edges'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    edge_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_node_id: Mapped[str] = mapped_column(ForeignKey('graph_nodes.id', ondelete='RESTRICT'), nullable=False)
+    target_node_id: Mapped[str] = mapped_column(ForeignKey('graph_nodes.id', ondelete='RESTRICT'), nullable=False)
+    relation_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    weight: Mapped[float | None] = mapped_column(Float)
+    propagation_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    data_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    properties: Mapped[dict] = mapped_column(JsonType, nullable=False, default=dict)
+    __table_args__ = (
+        UniqueConstraint('edge_key', 'version', name='uq_graph_edges_key_version'),
+        CheckConstraint("relation_kind IN ('verified_direct','industry_inferred','shared_exposure','unverified_candidate')", name='ck_graph_edges_kind'),
+        CheckConstraint('weight IS NULL OR (weight >= 0 AND weight <= 1)', name='ck_graph_edges_weight'),
+        CheckConstraint("relation_kind != 'unverified_candidate' OR propagation_eligible = false", name='ck_unverified_not_propagated'),
+        CheckConstraint('source_node_id != target_node_id', name='ck_graph_edges_no_self_loop'),
+        CheckConstraint('valid_to IS NULL OR valid_to > valid_from', name='ck_graph_edges_valid_range'),
+        Index('ix_graph_edges_source_target', 'source_node_id', 'target_node_id'),
+        Index('ix_graph_edges_key_validity', 'edge_key', 'valid_from', 'valid_to'),
+    )
+
+
+class EvidenceRecord(Base):
+    __tablename__ = 'evidence'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    evidence_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(600), nullable=False)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    verification_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    supports_claim: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    metadata_json: Mapped[dict] = mapped_column(JsonType, nullable=False, default=dict)
+    __table_args__ = (
+        UniqueConstraint('evidence_id', 'version', name='uq_evidence_stable_id_version'),
+        UniqueConstraint('evidence_id', 'content_hash', name='uq_evidence_stable_id_hash'),
+        CheckConstraint('version > 0', name='ck_evidence_version_positive'),
+        CheckConstraint('length(content_hash) = 64', name='ck_evidence_sha256_length'),
+        CheckConstraint("verification_status IN ('unverified','supported','rejected','superseded')", name='ck_evidence_verification_status'),
+        CheckConstraint('valid_to IS NULL OR valid_to > valid_from', name='ck_evidence_valid_range'),
+        Index('ix_evidence_id_validity', 'evidence_id', 'valid_from', 'valid_to'),
+        Index('ix_evidence_publication_retrieval', 'published_at', 'retrieved_at'),
+    )
+
+
+class EdgeEvidenceRecord(Base):
+    __tablename__ = 'edge_evidence'
+    edge_id: Mapped[str] = mapped_column(ForeignKey('graph_edges.id', ondelete='CASCADE'), primary_key=True)
+    evidence_record_id: Mapped[str] = mapped_column(ForeignKey('evidence.id', ondelete='RESTRICT'), primary_key=True)
+    linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class ScenarioRecord(Base):
+    __tablename__ = 'scenarios'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    input_snapshot: Mapped[dict] = mapped_column(JsonType, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class AnalysisRecord(Base):
+    __tablename__ = 'analyses'
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(ForeignKey('scenarios.id', ondelete='RESTRICT'), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    data_mode: Mapped[str] = mapped_column(String(40), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    data_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    parameters_snapshot: Mapped[dict] = mapped_column(JsonType, nullable=False)
+    analyzed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (
+        CheckConstraint("status IN ('complete','insufficient_evidence','invalid_input')", name='ck_analyses_status'),
+        Index('ix_analyses_scenario_created', 'scenario_id', 'created_at'),
+    )
+
+
+class AnalysisResultRecord(Base):
+    __tablename__ = 'analysis_results'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    analysis_id: Mapped[str] = mapped_column(ForeignKey('analyses.id', ondelete='CASCADE'), nullable=False, unique=True)
+    result_payload: Mapped[dict] = mapped_column(JsonType, nullable=False)
+    risk_index: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (CheckConstraint('risk_index IS NULL OR (risk_index >= 0 AND risk_index <= 100)', name='ck_analysis_results_risk_index'),)
+
+
+class DataChangeLogRecord(Base):
+    __tablename__ = 'data_change_log'
+    id: Mapped[int] = mapped_column(Integer().with_variant(BigInteger, 'postgresql'), primary_key=True, autoincrement=True)
+    table_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    record_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    change_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    before_snapshot: Mapped[dict | None] = mapped_column(JsonType)
+    after_snapshot: Mapped[dict] = mapped_column(JsonType, nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    __table_args__ = (
+        CheckConstraint("change_type IN ('create','supersede','link','snapshot')", name='ck_change_log_type'),
+        Index('ix_change_log_record', 'table_name', 'record_key', 'version'),
+    )

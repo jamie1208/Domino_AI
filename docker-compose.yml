@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: domino
+      POSTGRES_USER: domino
+      POSTGRES_PASSWORD: domino_dev_only
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U domino -d domino"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - domino_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  domino_postgres_data:
