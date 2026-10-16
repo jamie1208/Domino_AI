@@ -1,77 +1,85 @@
-"""Regression tests for duplicate-source admission in F58."""
-from app.schemas import Evidence, EvidenceKind, Relation, RelationKind
+"""Regression tests for source independence and Phase 4 provenance semantics."""
+from app.schemas import Evidence, EvidenceKind, EvidenceProvenance, Relation, RelationKind
 from app.skills.researcher import ResearchBundle
 from app.skills.evidence_verifier import EvidenceVerifierSkill
 
 
-def _evidence(identifier: str, url: str, *, kind=EvidenceKind.third_party, verified=True):
+def _evidence(identifier, url, *, kind=EvidenceKind.third_party, verified=True,
+              publisher=None, original=None, basis="publisher_and_original_source"):
     return Evidence(
         id=identifier, title="Synthetic example", source_url=url,
-        published_at="2026-01-01", kind=kind,
-        supports_claim=True, independently_verified=verified,
+        published_at="2026-01-01", kind=kind, supports_claim=True,
+        independently_verified=verified,
+        provenance=EvidenceProvenance(
+            publisher_key=publisher,
+            original_source_key=original,
+            independence_basis=basis if publisher and original else None,
+        ),
     )
 
 
-def _relation(ids):
-    return Relation(
-        source="Synthetic A", target="Synthetic B",
-        kind=RelationKind.corroborated_direct,
-        weight=0.5, evidence_ids=ids,
-    )
+def _relation(ids, kind=RelationKind.corroborated_direct):
+    return Relation(source="Synthetic A", target="Synthetic B", kind=kind,
+                    weight=0.5, evidence_ids=ids)
 
 
-def test_two_articles_from_same_host_are_not_independent():
-    bundle = ResearchBundle(
-        evidence=[
-            _evidence("e1", "https://www.example.org/a"),
-            _evidence("e2", "https://example.org/b"),
-        ],
-        candidate_relations=[_relation(["e1", "e2"])],
-    )
-    accepted, findings = EvidenceVerifierSkill().run(bundle)
+def _check(items, ids, kind=RelationKind.corroborated_direct):
+    return EvidenceVerifierSkill().run(ResearchBundle(items, [_relation(ids, kind)]))
+
+
+def test_same_host_is_not_independent_even_with_distinct_publishers():
+    accepted, findings = _check([
+        _evidence("e1", "https://www.example.org/a", publisher="publisher-one", original="origin-one"),
+        _evidence("e2", "https://example.org/b", publisher="publisher-two", original="origin-two"),
+    ], ["e1", "e2"])
     assert accepted == []
-    assert any(item.code == "DIRECT_LINK_UNVERIFIED" for item in findings)
+    assert any(f.code == "DIRECT_LINK_UNVERIFIED" for f in findings)
 
 
-def test_duplicate_evidence_ids_do_not_count_twice():
-    bundle = ResearchBundle(
-        evidence=[_evidence("e1", "https://example.org/a")],
-        candidate_relations=[_relation(["e1", "e1"])],
-    )
-    accepted, _ = EvidenceVerifierSkill().run(bundle)
+def test_duplicate_evidence_ids_not_counted_twice():
+    accepted, _ = _check([
+        _evidence("e1", "https://one.example/a", publisher="publisher-one", original="origin-one")
+    ], ["e1", "e1"])
     assert accepted == []
 
 
-def test_two_distinct_hosts_can_pass_preliminary_corroboration():
-    bundle = ResearchBundle(
-        evidence=[
-            _evidence("e1", "https://source-one.example/report"),
-            _evidence("e2", "https://source-two.example/report"),
-        ],
-        candidate_relations=[_relation(["e1", "e2"])],
-    )
-    accepted, findings = EvidenceVerifierSkill().run(bundle)
+def test_two_independent_sources_with_provenance_pass_preliminary_gate():
+    accepted, findings = _check([
+        _evidence("e1", "https://source-one.example/report", publisher="publisher-one", original="origin-one"),
+        _evidence("e2", "https://source-two.example/report", publisher="publisher-two", original="origin-two"),
+    ], ["e1", "e2"])
     assert len(accepted) == 1
-    assert not any(item.level == "error" for item in findings)
+    assert not any(f.level == "error" for f in findings)
+
+
+def test_distinct_hosts_without_provenance_cannot_verify_direct_edge():
+    accepted, findings = _check([
+        _evidence("e1", "https://source-one.example/report"),
+        _evidence("e2", "https://source-two.example/report"),
+    ], ["e1", "e2"])
+    assert accepted == []
+    assert any(f.code == "DIRECT_LINK_UNVERIFIED" for f in findings)
+
+
+def test_same_original_source_does_not_count_as_two():
+    accepted, _ = _check([
+        _evidence("e1", "https://source-one.example/report", publisher="publisher-one", original="same-original"),
+        _evidence("e2", "https://source-two.example/report", publisher="publisher-two", original="same-original"),
+    ], ["e1", "e2"])
+    assert accepted == []
 
 
 def test_single_official_source_can_support_direct_relationship():
-    bundle = ResearchBundle(
-        evidence=[_evidence("official1", "https://issuer.example/announcement", kind=EvidenceKind.official, verified=False)],
-        candidate_relations=[_relation(["official1"])],
-    )
-    accepted, _ = EvidenceVerifierSkill().run(bundle)
+    accepted, _ = _check([
+        _evidence("official1", "https://issuer.example/announcement",
+                  kind=EvidenceKind.official, verified=False),
+    ], ["official1"])
     assert len(accepted) == 1
 
 
-def test_candidate_is_always_excluded_even_if_supported():
-    bundle = ResearchBundle(
-        evidence=[_evidence("official1", "https://issuer.example/announcement", kind=EvidenceKind.official)],
-        candidate_relations=[Relation(
-            source="Synthetic A", target="Synthetic B", kind=RelationKind.candidate,
-            weight=0.5, evidence_ids=["official1"],
-        )],
-    )
-    accepted, findings = EvidenceVerifierSkill().run(bundle)
+def test_candidate_is_excluded_even_with_official_support():
+    accepted, findings = _check([
+        _evidence("official1", "https://issuer.example/announcement", kind=EvidenceKind.official),
+    ], ["official1"], RelationKind.candidate)
     assert accepted == []
-    assert any(item.code == "CANDIDATE_ONLY" for item in findings)
+    assert any(f.code == "CANDIDATE_ONLY" for f in findings)
