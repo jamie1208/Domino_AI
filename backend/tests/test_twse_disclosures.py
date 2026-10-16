@@ -155,7 +155,7 @@ def test_archive_persists_distinct_source_rows_and_exact_announcement_instant():
         assert {r.source_metadata["fact_date_raw"] for r in stored} == {"1151014", "1150713"}
         assert {r.source_metadata["clause_raw"] for r in stored} == {"第51款", "第20款"}
         assert all(r.source_metadata["canonical_source_row_sha256"] for r in stored)
-        assert all(r.source_published_at.replace(tzinfo=ZoneInfo("Asia/Taipei")).strftime("%H%M%S") == "090123" for r in stored)
+        assert all(r.source_published_at.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Taipei")).strftime("%H%M%S") == "090123" for r in stored)
         assert all(r.verification_status == "unverified" for r in stored)
         assert list(session.scalars(select(GraphEdgeRecord))) == []
 
@@ -184,7 +184,7 @@ def test_conflicting_normalized_source_keys_fail_closed():
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="isolated migrated PostgreSQL schema required")
 def test_postgres_distinct_same_second_disclosures_keep_provenance():
     original = json.loads(payload())[0]
-    code = "test-" + uuid4().hex[:12]
+    code = "T" + uuid4().hex[:7]
     original["公司代號"] = code
     alternate = {**original, "符合條款": "第20款", "事實發生日": "1150713"}
     snapshot = parse_disclosures(
