@@ -1,5 +1,6 @@
 """Synthetic offline coverage for official TWSE daily material disclosures."""
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import json
 
 import httpx
@@ -111,3 +112,68 @@ def test_transactional_import_deduplicates_and_preserves_unverified_text():
         assert rows[0].original_text == "合成半導體材料公告。"
         assert len(list(session.scalars(select(DocumentChunkRecord)))) == 1
         assert list(session.scalars(select(GraphEdgeRecord))) == []
+
+
+def test_same_second_same_title_body_but_different_fact_or_clause_is_preserved():
+    original = json.loads(payload())[0]
+    by_clause = {**original, "符合條款": "第20款"}
+    by_fact_date = {**original, "事實發生日": "1150713"}
+    by_report_date = {**original, "出表日期": "1151017"}
+    rows = [original, by_clause, by_fact_date, by_report_date]
+    snapshot = parse_disclosures(json.dumps(rows, ensure_ascii=False).encode(), retrieved_at=NOW)
+    assert snapshot.rejected_rows == 0
+    assert len(snapshot.documents) == len(rows) == 4
+    assert len({doc.document_key for doc in snapshot.documents}) == 4
+    assert [m["clause_raw"] for m in snapshot.source_rows][1] == "第20款"
+    assert snapshot.source_rows[2]["fact_date_raw"] == "1150713"
+    assert snapshot.source_rows[3]["batch_report_date_raw"] == "1151017"
+
+
+def test_official_five_digit_clock_retained_with_taipei_timezone():
+    row = json.loads(payload())[0]
+    row["發言時間"] = "64428"
+    snapshot = parse_disclosures(json.dumps([row], ensure_ascii=False).encode(), retrieved_at=NOW)
+    instant = snapshot.source_published_times[0]
+    assert instant.isoformat() == "2026-10-15T06:44:28+08:00"
+    assert snapshot.source_rows[0]["speech_time_raw"] == "64428"
+    assert snapshot.source_rows[0]["speech_time_normalized"] == "064428"
+
+
+def test_archive_persists_distinct_source_rows_and_exact_announcement_instant():
+    original = json.loads(payload())[0]
+    another = {**original, "事實發生日": "1150713", "符合條款": "第20款"}
+    first = parse_disclosures(json.dumps([original, another], ensure_ascii=False).encode(), retrieved_at=NOW)
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        result = persist_disclosures(session, first)
+        assert result["created_versions"] == 2
+        stored = list(session.scalars(select(PublicDocumentRecord).order_by(PublicDocumentRecord.document_key)))
+        assert len(stored) == 2
+        assert {r.source_metadata["fact_date_raw"] for r in stored} == {"1151014", "1150713"}
+        assert {r.source_metadata["clause_raw"] for r in stored} == {"第51款", "第20款"}
+        assert all(r.source_metadata["canonical_source_row_sha256"] for r in stored)
+        assert all(r.source_published_at.replace(tzinfo=ZoneInfo("Asia/Taipei")).strftime("%H%M%S") == "090123" for r in stored)
+        assert all(r.verification_status == "unverified" for r in stored)
+        assert list(session.scalars(select(GraphEdgeRecord))) == []
+
+
+def test_same_row_reappears_in_different_batch_hash_without_new_version():
+    row = json.loads(payload())[0]
+    first = parse_disclosures(json.dumps([row], ensure_ascii=False).encode(), retrieved_at=NOW)
+    second = parse_disclosures(json.dumps([row, {**row, "公司代號": "2317"}], ensure_ascii=False).encode(), retrieved_at=NOW + timedelta(days=1))
+    assert first.payload_sha256 != second.payload_sha256
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        assert persist_disclosures(session, first)["created_versions"] == 1
+        counts = persist_disclosures(session, second)
+        assert counts == {"created_versions": 1, "unchanged": 1}
+        assert len(list(session.scalars(select(PublicDocumentRecord)))) == 2
+
+
+def test_conflicting_normalized_source_keys_fail_closed():
+    row = json.loads(payload())[0]
+    row["主旨"] = "另一種標題"
+    with pytest.raises(DisclosureSourceError, match="zero valid"):
+        parse_disclosures(json.dumps([row], ensure_ascii=False).encode(), retrieved_at=NOW)
