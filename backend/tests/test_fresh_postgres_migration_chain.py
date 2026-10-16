@@ -13,7 +13,7 @@ from sqlalchemy.engine import make_url
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="isolated PostgreSQL test database required")
-def test_fresh_postgres_schema_0001_to_0003_and_repeat_upgrade():
+def test_fresh_postgres_schema_0001_to_0004_and_repeat_upgrade():
     raw_url = os.environ["TEST_DATABASE_URL"]
     parsed = make_url(raw_url)
     if not parsed.drivername.startswith("postgresql"):
@@ -42,8 +42,14 @@ def test_fresh_postgres_schema_0001_to_0003_and_repeat_upgrade():
         with test_engine.connect() as connection:
             inspector = inspect(connection)
             names = set(inspector.get_table_names())
-            assert {"companies", "evidence", "source_ingestion_runs", "alembic_version"} <= names
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261016_0003"
+            assert {"companies", "evidence", "source_ingestion_runs", "public_documents", "public_document_chunks", "alembic_version"} <= names
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261016_0004"
+            assert "ix_public_documents_key_time" in {
+                item["name"] for item in inspector.get_indexes("public_documents")
+            }
+            assert "ix_document_chunks_document" in {
+                item["name"] for item in inspector.get_indexes("public_document_chunks")
+            }
             assert "ix_source_runs_key_retrieved" in {
                 item["name"] for item in inspector.get_indexes("source_ingestion_runs")
             }

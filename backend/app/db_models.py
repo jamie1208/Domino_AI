@@ -208,3 +208,48 @@ class SourceIngestionRunRecord(Base):
         CheckConstraint('accepted_rows >= 0 AND rejected_rows >= 0 AND created_versions >= 0 AND unchanged_rows >= 0', name='ck_source_runs_counts'),
         Index('ix_source_runs_key_retrieved', 'source_key', 'retrieved_at'),
     )
+
+
+class PublicDocumentRecord(Base):
+    """Versioned full text; unverified until explicit independent review."""
+    __tablename__ = "public_documents"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    document_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    company_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    title: Mapped[str] = mapped_column(String(600), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_text: Mapped[str] = mapped_column(Text, nullable=False)
+    verification_status: Mapped[str] = mapped_column(String(20), nullable=False, default="unverified")
+    __table_args__ = (
+        UniqueConstraint("document_key", "version", name="uq_public_document_version"),
+        CheckConstraint("version > 0", name="ck_public_document_version"),
+        CheckConstraint("length(content_sha256) = 64", name="ck_public_document_hash"),
+        CheckConstraint("verification_status = 'unverified'", name="ck_public_document_unverified"),
+        CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="ck_public_document_validity"),
+        Index("ix_public_documents_key_time", "document_key", "valid_from", "valid_to"),
+    )
+
+
+class DocumentChunkRecord(Base):
+    """Immutable character offset range into one specific document version."""
+    __tablename__ = "public_document_chunks"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    document_record_id: Mapped[str] = mapped_column(ForeignKey("public_documents.id", ondelete="CASCADE"), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("document_record_id", "ordinal", name="uq_document_chunk_ordinal"),
+        CheckConstraint("start_offset >= 0 AND end_offset > start_offset", name="ck_document_chunk_offsets"),
+        CheckConstraint("length(content_sha256) = 64", name="ck_document_chunk_hash"),
+        Index("ix_document_chunks_document", "document_record_id", "ordinal"),
+    )
