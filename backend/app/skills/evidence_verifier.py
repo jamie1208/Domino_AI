@@ -1,7 +1,7 @@
-"""Conservative, deterministic evidence admission.
+"""EvidenceVerifierSkill: conservative relationship admission.
 
-These checks are necessary guardrails, not a substitute for reviewing the cited
-passage. A caller-supplied supports_claim flag is not independent verification.
+This is a preliminary metadata/claim gate. It does not independently establish
+that an excerpt truly supports a claim or that publishers are editorially independent.
 """
 from urllib.parse import urlsplit
 
@@ -9,16 +9,28 @@ from app.schemas import EvidenceKind, RelationKind, ValidationFinding
 from app.skills.researcher import ResearchBundle
 
 
-def _source_host(url: str) -> str | None:
-    """A modest duplicate-source heuristic, not proof of editorial independence."""
+def _host(url: str) -> str | None:
     try:
         parsed = urlsplit(url)
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             return None
-        host = parsed.hostname.lower().removeprefix("www.")
-        return host
+        return parsed.hostname.lower().removeprefix("www.")
     except ValueError:
         return None
+
+
+def _independent_pair(items) -> bool:
+    """Require a pair with distinct host, publisher AND original source."""
+    for i, first in enumerate(items):
+        for second in items[i + 1:]:
+            if (
+                first.id != second.id
+                and _host(first.source_url) != _host(second.source_url)
+                and first.provenance.publisher_key != second.provenance.publisher_key
+                and first.provenance.original_source_key != second.provenance.original_source_key
+            ):
+                return True
+    return False
 
 
 class EvidenceVerifierSkill:
@@ -27,16 +39,16 @@ class EvidenceVerifierSkill:
         accepted = []
         findings = []
 
-        for rel in bundle.candidate_relations:
-            related = [evidence[eid] for eid in dict.fromkeys(rel.evidence_ids) if eid in evidence]
-            label = f"{rel.source} → {rel.target}"
-
-            if rel.kind == RelationKind.candidate:
+        for relation in bundle.candidate_relations:
+            label = f"{relation.source} → {relation.target}"
+            if relation.kind == RelationKind.candidate:
                 findings.append(ValidationFinding(
                     code="CANDIDATE_ONLY", level="warning",
                     message=f"{label} 尚待確認，不納入風險傳播",
                 ))
                 continue
+
+            related = [evidence[eid] for eid in dict.fromkeys(relation.evidence_ids) if eid in evidence]
             if not related:
                 findings.append(ValidationFinding(
                     code="MISSING_EVIDENCE", level="error",
@@ -52,23 +64,28 @@ class EvidenceVerifierSkill:
                 ))
                 continue
 
-            if rel.kind in (RelationKind.verified_direct, RelationKind.corroborated_direct):
+            if relation.kind in (RelationKind.verified_direct, RelationKind.corroborated_direct):
                 official = any(
-                    item.kind == EvidenceKind.official and _source_host(item.source_url)
+                    item.kind == EvidenceKind.official and _host(item.source_url)
                     for item in supported
                 )
-                third_party_hosts = {
-                    host
-                    for item in supported
-                    if item.kind == EvidenceKind.third_party and item.independently_verified
-                    if (host := _source_host(item.source_url))
-                }
-                if not official and len(third_party_hosts) < 2:
+                eligible = [
+                    item for item in supported
+                    if item.kind == EvidenceKind.third_party
+                    and item.independently_verified
+                    and _host(item.source_url)
+                    and item.provenance.publisher_key
+                    and item.provenance.original_source_key
+                    and item.provenance.independence_basis in (
+                        "publisher_and_original_source", "manual_review"
+                    )
+                ]
+                if not official and not _independent_pair(eligible):
                     findings.append(ValidationFinding(
                         code="DIRECT_LINK_UNVERIFIED", level="warning",
-                        message=f"{label} 直接關係證據不足；兩筆同來源紀錄不得當成獨立查證",
+                        message=f"{label} 直接關係缺少官方來源或具完整獨立性資料的兩份第三方證據",
                     ))
                     continue
 
-            accepted.append(rel)
+            accepted.append(relation)
         return accepted, findings
