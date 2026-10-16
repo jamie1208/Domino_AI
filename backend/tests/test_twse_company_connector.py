@@ -143,7 +143,7 @@ def test_postgres_company_import_versions_and_rejects_out_of_order_snapshot():
         base = parse_twse_profiles(payload(), retrieved_at=NOW)
         # Keep the injected synthetic company isolated from production-like rows.
         from dataclasses import replace
-        synthetic = replace(base.profiles[0], company_key=ticker, ticker=ticker)
+        synthetic = replace(base.profiles[0], company_key=f"twse-listed:{ticker}", ticker=ticker)
         first = replace(base, profiles=(synthetic,))
         result = import_twse_snapshot(session, first)
         assert result.created_versions == 1
@@ -156,7 +156,7 @@ def test_postgres_company_import_versions_and_rejects_out_of_order_snapshot():
         )
         assert import_twse_snapshot(session, revised).created_versions == 1
         versions = list(session.scalars(
-            select(CompanyRecord).where(CompanyRecord.company_key == ticker)
+            select(CompanyRecord).where(CompanyRecord.company_key == f"twse-listed:{ticker}")
             .order_by(CompanyRecord.version)
         ))
         assert [v.version for v in versions] == [1, 2]
