@@ -28,6 +28,8 @@ class ArchiveWriteResult:
 def archive_document(
     session: Session, document: DocumentInput, *, retrieved_at: datetime,
     chunk_size: int = 800, overlap: int = 100,
+    source_published_at: datetime | None = None,
+    source_metadata: dict | None = None,
 ) -> ArchiveWriteResult:
     """Requires caller-owned transaction; no implicit commit or external fetch.
 
@@ -35,6 +37,10 @@ def archive_document(
     """
     if retrieved_at.tzinfo is None:
         raise ValueError("retrieved_at requires timezone")
+    if source_published_at is not None and source_published_at.tzinfo is None:
+        raise ValueError("source_published_at requires timezone")
+    if source_metadata is not None and not isinstance(source_metadata, dict):
+        raise ValueError("source_metadata must be a JSON object")
     doc = normalize_document(document)
     parts = split_document(doc.text, chunk_size=chunk_size, overlap=overlap)
     digest = sha256(doc.text.encode("utf-8")).hexdigest()
@@ -54,6 +60,13 @@ def archive_document(
         latest.source_type == doc.source_type,
         latest.published_at.date() == date.fromisoformat(doc.published_at),
     ))
+    if same and source_metadata is not None and latest.source_metadata != source_metadata:
+        raise ValueError("Existing document identity has different source metadata")
+    if same and source_published_at is not None and (
+        latest.source_published_at is None or
+        _utc(latest.source_published_at) != _utc(source_published_at)
+    ):
+        raise ValueError("Existing document identity has different publication timestamp")
     if same:
         existing_count = session.query(DocumentChunkRecord).filter(
             DocumentChunkRecord.document_record_id == latest.id
@@ -71,6 +84,8 @@ def archive_document(
                                       datetime.min.time(), tzinfo=timezone.utc),
         retrieved_at=retrieved_at, valid_from=retrieved_at,
         content_sha256=digest, original_text=doc.text, verification_status="unverified",
+        source_published_at=source_published_at,
+        source_metadata=source_metadata or {},
     )
     session.add(record)
     session.flush()
