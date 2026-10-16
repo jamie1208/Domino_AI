@@ -226,6 +226,8 @@ class PublicDocumentRecord(Base):
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     original_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_metadata: Mapped[dict] = mapped_column(JsonType, nullable=False, default=dict)
     verification_status: Mapped[str] = mapped_column(String(20), nullable=False, default="unverified")
     __table_args__ = (
         UniqueConstraint("document_key", "version", name="uq_public_document_version"),
