@@ -8,6 +8,7 @@ may already exist before this migration. Inspect rather than recreate.
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "20261016_0005"
 down_revision = "20261016_0004"
@@ -23,7 +24,7 @@ def upgrade() -> None:
         ))
     if "source_metadata" not in existing:
         op.add_column("public_documents", sa.Column(
-            "source_metadata", sa.JSON().with_variant(sa.dialects.postgresql.JSONB(), "postgresql"),
+            "source_metadata", sa.JSON().with_variant(JSONB(), "postgresql"),
             nullable=False, server_default=sa.text("'{}'"),
         ))
 
