@@ -41,6 +41,11 @@ def archive_document(
         raise ValueError("source_published_at requires timezone")
     if source_metadata is not None and not isinstance(source_metadata, dict):
         raise ValueError("source_metadata must be a JSON object")
+    # Normalize before persistence: SQLite drops tzinfo on read, so stored
+    # naive values must always represent UTC rather than Taiwan wall time.
+    normalized_source_published_at = (
+        _utc(source_published_at) if source_published_at is not None else None
+    )
     doc = normalize_document(document)
     parts = split_document(doc.text, chunk_size=chunk_size, overlap=overlap)
     digest = sha256(doc.text.encode("utf-8")).hexdigest()
@@ -67,7 +72,7 @@ def archive_document(
         raise ValueError("Existing document identity has different source metadata")
     if same and source_published_at is not None and (
         latest.source_published_at is None or
-        _utc(latest.source_published_at) != _utc(source_published_at)
+        _utc(latest.source_published_at) != normalized_source_published_at
     ):
         raise ValueError("Existing document identity has different publication timestamp")
     if same:
@@ -87,7 +92,7 @@ def archive_document(
                                       datetime.min.time(), tzinfo=timezone.utc),
         retrieved_at=retrieved_at, valid_from=retrieved_at,
         content_sha256=digest, original_text=doc.text, verification_status="unverified",
-        source_published_at=source_published_at,
+        source_published_at=normalized_source_published_at,
         source_metadata=source_metadata or {},
     )
     session.add(record)
