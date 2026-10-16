@@ -17,8 +17,17 @@ def persist_disclosures(session, snapshot: DisclosureSnapshot) -> dict[str, int]
     """Call within one caller-owned transaction; never create graph links."""
     created = 0
     unchanged = 0
-    for document in snapshot.documents:
-        record = archive_document(session, document, retrieved_at=snapshot.retrieved_at)
+    if not (len(snapshot.documents) == len(snapshot.source_rows) == len(snapshot.source_published_times)):
+        raise ValueError("Disclosure source provenance must align with accepted documents")
+    for document, metadata, published_at in zip(
+        snapshot.documents, snapshot.source_rows, snapshot.source_published_times
+    ):
+        record = archive_document(
+            session, document, retrieved_at=snapshot.retrieved_at,
+            source_published_at=published_at,
+            source_metadata={**metadata, "source_batch_sha256": snapshot.payload_sha256,
+                             "source_dataset_url": snapshot.dataset_url},
+        )
         if record.changed:
             created += 1
         else:
