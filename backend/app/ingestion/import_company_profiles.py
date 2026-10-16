@@ -20,6 +20,12 @@ def persist_snapshot(session, *, source_key, snapshot):
 
     Caller owns commit/rollback; the method must not silently commit.
     """
+    expected_url = {
+        "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
+        "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
+    }.get(source_key)
+    if expected_url is None or snapshot.source_url != expected_url:
+        raise ValueError("Source key does not match snapshot provenance")
     result = import_company_snapshot(session, snapshot)
     session.add(SourceIngestionRunRecord(
         source_key=source_key,
