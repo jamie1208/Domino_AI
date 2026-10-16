@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.api_adapter import adapt_analysis
-from app.db_models import Base
+from app.db_models import Base, GraphEdgeRecord
 from app.evidence_policy import EvidenceAdmissionError
 from app.orchestrator import Orchestrator
 from app.persistence import AnalysisPersistenceService
@@ -42,6 +42,19 @@ def analysis_for(evidence, evidence_ids):
     return result, api_result
 
 
+def assert_direct_relation_rejected(session, skill_result, api_result, expected_repository_code):
+    service = AnalysisPersistenceService(session)
+    if skill_result.relations:
+        with pytest.raises(EvidenceAdmissionError) as caught:
+            service.save(api_result)
+        assert caught.value.code == expected_repository_code
+        session.rollback()
+    else:
+        service.save(api_result)
+    direct_edges = list(session.scalars(select(GraphEdgeRecord).where(GraphEdgeRecord.relation_kind == 'verified_direct')))
+    assert direct_edges == []
+
+
 def test_two_proven_independent_third_parties_pass_skills_and_persist(session):
     first = third_party('e1', 'https://one.example/report', publisher='publisher-one', original='origin-one')
     second = third_party('e2', 'https://two.example/report', publisher='publisher-two', original='origin-two')
@@ -60,26 +73,30 @@ def test_two_proven_independent_third_parties_pass_skills_and_persist(session):
 
 def test_same_host_is_not_two_independent_sources(session):
     evidence = [third_party('e1', 'https://www.same.example/a', publisher='one', original='origin-one'), third_party('e2', 'https://same.example/b', publisher='two', original='origin-two')]
-    _, api_result = analysis_for(evidence, ['e1', 'e2'])
-    with pytest.raises(EvidenceAdmissionError, match='Host') as caught:
-        AnalysisPersistenceService(session).save(api_result)
-    assert caught.value.code == 'DIRECT_EVIDENCE_HOSTS_NOT_INDEPENDENT'
+    skill_result, api_result = analysis_for(evidence, ['e1', 'e2'])
+    assert_direct_relation_rejected(session, skill_result, api_result, 'DIRECT_EVIDENCE_HOSTS_NOT_INDEPENDENT')
+
+
+def test_distinct_values_across_three_records_do_not_replace_one_complete_pair(session):
+    evidence = [
+        third_party('e1', 'https://host-one.example/a', publisher='publisher-one', original='origin-one'),
+        third_party('e2', 'https://host-one.example/b', publisher='publisher-two', original='origin-two'),
+        third_party('e3', 'https://host-two.example/c', publisher='publisher-one', original='origin-two'),
+    ]
+    skill_result, api_result = analysis_for(evidence, ['e1', 'e2', 'e3'])
+    assert_direct_relation_rejected(session, skill_result, api_result, 'DIRECT_EVIDENCE_PROVENANCE_NOT_INDEPENDENT')
 
 
 def test_duplicate_evidence_id_is_not_counted_twice(session):
     evidence = [third_party('e1', 'https://one.example/a', publisher='one', original='origin-one')]
-    _, api_result = analysis_for(evidence, ['e1', 'e1'])
-    with pytest.raises(EvidenceAdmissionError) as caught:
-        AnalysisPersistenceService(session).save(api_result)
-    assert caught.value.code == 'DIRECT_EVIDENCE_INDEPENDENCE_METADATA_MISSING'
+    skill_result, api_result = analysis_for(evidence, ['e1', 'e1'])
+    assert_direct_relation_rejected(session, skill_result, api_result, 'DIRECT_EVIDENCE_INDEPENDENCE_METADATA_MISSING')
 
 
 def test_missing_independence_metadata_is_rejected(session):
     evidence = [third_party('e1', 'https://one.example/a'), third_party('e2', 'https://two.example/b')]
-    _, api_result = analysis_for(evidence, ['e1', 'e2'])
-    with pytest.raises(EvidenceAdmissionError) as caught:
-        AnalysisPersistenceService(session).save(api_result)
-    assert caught.value.code == 'DIRECT_EVIDENCE_INDEPENDENCE_METADATA_MISSING'
+    skill_result, api_result = analysis_for(evidence, ['e1', 'e2'])
+    assert_direct_relation_rejected(session, skill_result, api_result, 'DIRECT_EVIDENCE_INDEPENDENCE_METADATA_MISSING')
 
 
 def test_industry_model_cannot_be_promoted_by_skills_or_repository(session):

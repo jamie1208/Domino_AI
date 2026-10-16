@@ -41,7 +41,20 @@ def admit_verified_direct(records: list[EvidenceRecord]) -> None:
     ]
     if len(eligible) < 2:
         raise EvidenceAdmissionError('DIRECT_EVIDENCE_INDEPENDENCE_METADATA_MISSING', '第三方證據缺少明確的獨立驗證、出版者、原始來源或驗證依據 metadata。')
-    if len({record.normalized_source_host for record in eligible}) < 2:
+    host_distinct_pairs = [
+        (first, second)
+        for index, first in enumerate(eligible)
+        for second in eligible[index + 1:]
+        if first.evidence_id != second.evidence_id
+        and first.normalized_source_host != second.normalized_source_host
+    ]
+    if not host_distinct_pairs:
         raise EvidenceAdmissionError('DIRECT_EVIDENCE_HOSTS_NOT_INDEPENDENT', 'verified_direct 的第三方證據必須來自至少兩個不同來源 Host。')
-    if len({record.publisher_key for record in eligible}) < 2 or len({record.original_source_key for record in eligible}) < 2:
+    complete_pairs = [
+        (first, second)
+        for first, second in host_distinct_pairs
+        if first.publisher_key != second.publisher_key
+        and first.original_source_key != second.original_source_key
+    ]
+    if not complete_pairs:
         raise EvidenceAdmissionError('DIRECT_EVIDENCE_PROVENANCE_NOT_INDEPENDENT', '不同 Host 不足以證明獨立性；必須確認不同出版者與原始資訊來源。')
