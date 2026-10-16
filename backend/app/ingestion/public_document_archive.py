@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from hashlib import sha256
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -52,7 +52,7 @@ def archive_document(
         latest.content_sha256 == digest,
         latest.title == doc.title,
         latest.source_type == doc.source_type,
-        latest.published_at.date() == __import__("datetime").date.fromisoformat(doc.published_at),
+        latest.published_at.date() == date.fromisoformat(doc.published_at),
     ))
     if same:
         existing_count = session.query(DocumentChunkRecord).filter(
