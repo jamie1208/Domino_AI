@@ -6,6 +6,7 @@ risk-propagation graph remain entirely untouched.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,17 @@ class CompanyImportReport:
     unchanged: int
     rejected_rows: int
     source_sha256: str
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Normalize database datetimes for comparison.
+
+    Stored company timestamps originate from UTC-aware ingestion snapshots.
+    SQLite may discard timezone metadata on read; interpret these values as UTC.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def import_twse_snapshot(session: Session, snapshot: CompanySnapshot) -> CompanyImportReport:
@@ -55,7 +67,7 @@ def import_twse_snapshot(session: Session, snapshot: CompanySnapshot) -> Company
                 and all(latest.metadata_json.get(k) == v for k, v in comparable.items())):
             unchanged += 1
             continue
-        if latest and snapshot.retrieved_at <= latest.valid_from:
+        if latest and _as_utc(snapshot.retrieved_at) <= _as_utc(latest.valid_from):
             raise ValueError("Imported snapshot timestamp must be later than current company version")
         repository.create_version(
             company_key=item.company_key,
