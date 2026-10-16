@@ -50,7 +50,11 @@ def _roc_date(value: object) -> str:
     return date(year + 1911, month, day).isoformat()
 
 
-def parse_disclosures(payload: bytes, *, retrieved_at: datetime | None = None) -> DisclosureSnapshot:
+def parse_disclosures(
+    payload: bytes, *, retrieved_at: datetime | None = None,
+    source_url: str = URL, dataset_url: str = DATASET,
+    company_prefix: str = "twse-listed", document_prefix: str = "twse-material",
+) -> DisclosureSnapshot:
     if not payload or len(payload) > MAX_BYTES:
         raise DisclosureSourceError("Announcement payload exceeds size budget or is empty")
     try:
@@ -104,7 +108,7 @@ def parse_disclosures(payload: bytes, *, retrieved_at: datetime | None = None) -
         # canonical source field, including clause, fact date and report date.
         canonical = json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         row_hash = sha256(canonical.encode("utf-8")).hexdigest()
-        document_key = f"twse-material:{code}:{published}:{clock}:{row_hash}"
+        document_key = f"{document_prefix}:{code}:{published}:{clock}:{row_hash}"
         if document_key in seen:
             continue
         seen.add(document_key)
@@ -129,16 +133,16 @@ def parse_disclosures(payload: bytes, *, retrieved_at: datetime | None = None) -
         # The source URL is a daily batch endpoint, not an item permalink.
         accepted.append(DocumentInput(
             document_key=document_key,
-            company_key=f"twse-listed:{code}",
+            company_key=f"{company_prefix}:{code}",
             title=title.strip(),
-            source_url=URL,
+            source_url=source_url,
             published_at=published,
             text=body.strip(),
             source_type="material_announcement",
         ))
     if rows and not accepted:
         raise DisclosureSourceError("TWSE disclosure schema yielded zero valid rows")
-    return DisclosureSnapshot(tuple(accepted), observed, URL, DATASET,
+    return DisclosureSnapshot(tuple(accepted), observed, source_url, dataset_url,
                               sha256(payload).hexdigest(), rejected,
                               tuple(metadata_rows), tuple(publication_times))
 
