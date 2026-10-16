@@ -3,7 +3,7 @@
 Run with: python -m app.ingestion.import_twse_companies [--apply]
 
 Default dry-run fetches and validates without writing to the DB.
---apply requires configured DATABASE_URL and Alembic migrations.
+--apply requires configured DATABASE_URL and Alembic migrations through 0003.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import argparse
 import json
 
 from app.database import session_factory
-from app.ingestion.twse_companies import import_twse_snapshot
+from app.ingestion.import_company_profiles import persist_snapshot
 from app.skills.twse_companies import TWSECompanyConnector
 
 
@@ -33,7 +33,7 @@ def main() -> None:
     if args.apply:
         with session_factory()() as session:
             with session.begin():
-                result = import_twse_snapshot(session, snapshot)
+                result = persist_snapshot(session, source_key='twse', snapshot=snapshot)
             report["created_versions"] = result.created_versions
             report["unchanged"] = result.unchanged
     print(json.dumps(report, ensure_ascii=False, indent=2))
