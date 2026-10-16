@@ -17,12 +17,15 @@ It does not scrape MOPS HTML, fetch annual-report PDFs, or use LLM/RAG.
   `事實發生日` is **not** a publication date. Both may differ from
   `出表日期`. Dates are interpreted as ROC calendar only when parseable.
 - Source URL is a **daily batch endpoint**, not an immutable permalink
-  to one announcement. Record IDs are derived from company, publication
-  day/time and a content fingerprint. Batch-level archived raw fetch bytes
-  and permanent item URLs remain follow-up work.
-- Identical rows within a response are deduplicated. Content changes produce
-  different item keys if the title/body fingerprint changes; these are not
-  automatically treated as revisions of the same announcement.
+  to one announcement. Record IDs are derived from company, publication day/time and a SHA-256
+  fingerprint of the **complete canonical source row**, not merely title/body.
+  This prevents silent merging when clause/fact date/report date differ.
+  Exact duplicate rows remain indistinguishable without a publisher item ID.
+  Batch-level archived raw fetch bytes and permanent item URLs remain follow-up work.
+- Identical rows within a response are deduplicated. Any source-row field changes produce a different item key; the connector
+  **cannot reliably correlate corrections to the same logical announcement**
+  until a stable official item identifier becomes available. This may create
+  separate archived observations rather than a version of the original one.
 
 ## Safe operator workflow
 
@@ -50,6 +53,15 @@ instead of fabricating successful imports.
 
 - Only `material_announcement` unverified documents are added to the
   existing public document archive and chunk table.
+- Alembic 0005 adds `source_published_at` (timezone-aware original speech
+  timestamp) and `source_metadata` (complete normalized source row, source
+  row digest, raw speech/date/clause fields and first observed batch SHA-256).
+  The speech instant is interpreted in `Asia/Taipei` from the official ROC
+  speech date and zero-padded 6-digit time; the existing `published_at`
+  remains a date-level field for API compatibility.
+- Importing an identical announcement from a later batch does not duplicate
+  the document version. The first batch hash is retained; later fetches do
+  **not** yet receive their own immutable retrieval receipts.
 - No supplier/customer Graph Edge, company relation, verified claim,
   risk propagation path, or real risk score is generated.
 - Initial version does not link announcement documents to an existing Company
@@ -65,7 +77,11 @@ instead of fabricating successful imports.
 1. Confirm live API HTTP and actual Chinese field names in one controlled GET.
 2. Dry-run no-write, then controlled --apply to a **disposable PostgreSQL schema**.
 3. Same snapshot twice yields one document, no new version; different
-   announcements at the same second remain distinct.
+   announcements at the same second remain distinct even if title and body
+   match but fact date, disclosure clause or report date differ.
+4. Confirm explicit `Asia/Taipei` speech timestamp and complete canonical
+   source-row metadata are stored in PostgreSQL; verify migration 0004->0005
+   and fresh 0001->0005 paths.
 4. ROC dates and difference between disclosure and event dates.
 5. Network timeout, redirects, invalid UTF-8/JSON, empty and oversized bodies.
 6. Full pytest with migrations through 0004, existing Analysis API and
