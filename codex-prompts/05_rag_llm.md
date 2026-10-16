@@ -1,0 +1,3 @@
+# Codex Task 05 — Hybrid RAG + cloud LLM gateway
+
+Inspect Skills modules and SKILLS_ARCHITECTURE. Add configurable cloud model gateway with two tiers, cost/time budget and schema-constrained output. Add extraction/indexing of lawfully obtained documents (PDF page metadata when available). Add PostgreSQL full-text + pgvector retrieval, merged ranking and strict evidence spans. Secrets only via backend env. Add unit tests with mocked LLM replies and fixtures (no real billing in CI). If keys or real sources unavailable, run in no-LLM mode and clearly report the limitation. Never allow LLM to invent risk scores, relationships or citations.

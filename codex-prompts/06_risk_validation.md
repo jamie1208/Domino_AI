@@ -1,0 +1,3 @@
+# Codex Task 06 — Real risk model & validation
+
+Inspect existing risk_engine/network.py (demo only). Implement source-backed sector input-output coefficient model, with grounded normalizations and separate enterprise-exposure path; guard against loops and double-counting. Preserve explainability and no-score-if-insufficient-evidence. Add deterministic test fixtures, sensitivity invariants where appropriate, version metadata. Create historical validation protocol with no future-data leakage and one initial real event. Do not create baselines or ablation experiments (F61=A). Do not claim calibrated predictive accuracy without evidence.
