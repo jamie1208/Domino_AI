@@ -3,12 +3,9 @@ from datetime import datetime
 from sqlalchemy import or_, select
 
 from app.db_models import EdgeEvidenceRecord, EvidenceRecord, GraphEdgeRecord, GraphNodeRecord
+from app.domain_errors import InvalidGraphRelationshipError
+from app.evidence_policy import admit_verified_direct
 from app.repositories.base import Repository
-
-
-class InvalidGraphRelationshipError(ValueError):
-    pass
-
 
 class GraphRepository(Repository):
     def latest_node(self, node_key: str) -> GraphNodeRecord | None:
@@ -34,10 +31,7 @@ class GraphRepository(Repository):
             raise InvalidGraphRelationshipError('未驗證候選關係不得參與風險傳播。')
         if relation_kind == 'verified_direct':
             records = list(self.session.scalars(select(EvidenceRecord).where(EvidenceRecord.id.in_(evidence_ids), EvidenceRecord.verification_status == 'supported', EvidenceRecord.supports_claim.is_(True)))) if evidence_ids else []
-            official = any(item.kind == 'official' for item in records)
-            independent = sum(1 for item in records if item.kind == 'third_party' and item.metadata_json.get('independently_verified') is True) >= 2
-            if not (official or independent):
-                raise InvalidGraphRelationshipError('verified_direct 必須有官方支持證據，或至少兩份獨立驗證的第三方證據。')
+            admit_verified_direct(records)
         latest = self.latest_edge(edge_key)
         version = 1 if latest is None else latest.version + 1
         if latest and latest.valid_to is None:

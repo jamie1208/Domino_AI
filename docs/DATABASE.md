@@ -17,6 +17,8 @@ data_change_log records version creation, supersession, links and snapshots
 
 Graph edge kinds are `verified_direct`, `industry_inferred`, `shared_exposure`, and `unverified_candidate`. A database constraint and repository guard both prevent an unverified candidate from becoming propagation eligible. The repository additionally requires supported evidence before accepting `verified_direct`.
 
+For third-party direct-link corroboration, persistence retains `independently_verified`, a normalized source host, publisher key, original-source key, and the independence-review basis. Two distinct hosts are necessary but not sufficient: stable evidence IDs, publishers, and original sources must also be distinct, and missing provenance is rejected conservatively. These fields remain provenance assertions until a genuine source adapter and review workflow verifies them.
+
 `analysis_results.result_payload` is the immutable Phase 3 API snapshot. `risk_index` is nullable and remains null when the Python engine did not issue a score.
 
 ## Local commands

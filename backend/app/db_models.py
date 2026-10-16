@@ -104,6 +104,11 @@ class EvidenceRecord(Base):
     kind: Mapped[str] = mapped_column(String(40), nullable=False)
     verification_status: Mapped[str] = mapped_column(String(40), nullable=False)
     supports_claim: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    independently_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    normalized_source_host: Mapped[str | None] = mapped_column(String(253))
+    publisher_key: Mapped[str | None] = mapped_column(String(240))
+    original_source_key: Mapped[str | None] = mapped_column(String(240))
+    independence_basis: Mapped[str | None] = mapped_column(String(60))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -113,10 +118,10 @@ class EvidenceRecord(Base):
     metadata_json: Mapped[dict] = mapped_column(JsonType, nullable=False, default=dict)
     __table_args__ = (
         UniqueConstraint('evidence_id', 'version', name='uq_evidence_stable_id_version'),
-        UniqueConstraint('evidence_id', 'content_hash', name='uq_evidence_stable_id_hash'),
         CheckConstraint('version > 0', name='ck_evidence_version_positive'),
         CheckConstraint('length(content_hash) = 64', name='ck_evidence_sha256_length'),
         CheckConstraint("verification_status IN ('unverified','supported','rejected','superseded')", name='ck_evidence_verification_status'),
+        CheckConstraint("independence_basis IS NULL OR independence_basis IN ('publisher_and_original_source','manual_review')", name='ck_evidence_independence_basis'),
         CheckConstraint('valid_to IS NULL OR valid_to > valid_from', name='ck_evidence_valid_range'),
         Index('ix_evidence_id_validity', 'evidence_id', 'valid_from', 'valid_to'),
         Index('ix_evidence_publication_retrieval', 'published_at', 'retrieved_at'),

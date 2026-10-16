@@ -62,7 +62,7 @@ def test_graph_relationship_evidence_gate_and_candidate_exclusion(session):
     industry = evidence.create_version(evidence_id='synthetic-industry', title='合成產業模型證據', content='產業推論', kind='industry_model', verification_status='supported', supports_claim=True, retrieved_at=now, valid_from=now)
     with pytest.raises(InvalidGraphRelationshipError):
         graph.create_edge_version(edge_key='direct', source_node_id=source.id, target_node_id=target.id, relation_kind='verified_direct', propagation_eligible=True, evidence_record_ids=[industry.id], valid_from=now, data_version='test-v1')
-    supported = evidence.create_version(evidence_id='synthetic-supported', title='已支持合成證據', content='支持', kind='official', verification_status='supported', supports_claim=True, retrieved_at=now, valid_from=now)
+    supported = evidence.create_version(evidence_id='synthetic-supported', title='已支持合成證據', content='支持', kind='official', verification_status='supported', supports_claim=True, source_url='https://official.example/disclosure', retrieved_at=now, valid_from=now)
     edge = graph.create_edge_version(edge_key='direct', source_node_id=source.id, target_node_id=target.id, relation_kind='verified_direct', propagation_eligible=True, evidence_record_ids=[supported.id], valid_from=now, data_version='test-v1')
     session.commit()
     assert edge in graph.edges_at(now + timedelta(seconds=1), propagation_only=True)

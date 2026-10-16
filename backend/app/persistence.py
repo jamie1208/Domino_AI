@@ -37,12 +37,16 @@ class AnalysisPersistenceService:
                 kind=item.kind.value,
                 verification_status='supported' if item.supports_claim else 'unverified',
                 supports_claim=item.supports_claim,
+                independently_verified=item.independently_verified,
                 source_url=source_url,
+                publisher_key=item.provenance.publisher_key,
+                original_source_key=item.provenance.original_source_key,
+                independence_basis=item.provenance.independence_basis,
                 published_at=_parse_date(item.published_at),
                 retrieved_at=observed_at,
                 valid_from=observed_at,
                 summary=item.quote_or_summary,
-                metadata={'data_mode': result.data_mode},
+                metadata={'data_mode': result.data_mode, 'source_host_normalized': True},
             )
             evidence_records[item.id] = record.id
 

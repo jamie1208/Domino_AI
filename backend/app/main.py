@@ -9,6 +9,7 @@ from app.fixture import FixtureProvider
 from app.api_adapter import adapt_analysis
 from app.database import DatabaseNotConfiguredError, database_url, session_factory
 from app.persistence import AnalysisPersistenceService
+from app.domain_errors import EvidenceAdmissionError
 
 app=FastAPI(title='Domino AI MVP — synthetic demonstration',version='0.1.0')
 
@@ -37,6 +38,8 @@ def demo_analyze(scenario:Scenario):
         try:
             with session_factory()() as session:
                 AnalysisPersistenceService(session).save(response)
+        except EvidenceAdmissionError as exc:
+            raise HTTPException(status_code=422, detail={'code': exc.code, 'message': str(exc)}) from exc
         except (SQLAlchemyError, OSError) as exc:
             raise HTTPException(status_code=503, detail='分析已完成，但資料庫持久化失敗；未回傳假的保存結果。') from exc
     return response

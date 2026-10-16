@@ -9,6 +9,11 @@ class EvidenceKind(str, Enum):
     industry_model = 'industry_model'
     unverified = 'unverified'
 
+class EvidenceProvenance(BaseModel):
+    publisher_key: str | None = None
+    original_source_key: str | None = None
+    independence_basis: Literal['publisher_and_original_source', 'manual_review'] | None = None
+
 class RelationKind(str, Enum):
     verified_direct = 'verified_direct'
     corroborated_direct = 'corroborated_direct'
@@ -25,6 +30,7 @@ class Evidence(BaseModel):
     supports_claim: bool = False
     quote_or_summary: str = ''
     independently_verified: bool = False
+    provenance: EvidenceProvenance = Field(default_factory=EvidenceProvenance)
 
 class Relation(BaseModel):
     source: str
