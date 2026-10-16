@@ -155,6 +155,7 @@ def test_archive_persists_distinct_source_rows_and_exact_announcement_instant():
         assert {r.source_metadata["fact_date_raw"] for r in stored} == {"1151014", "1150713"}
         assert {r.source_metadata["clause_raw"] for r in stored} == {"第51款", "第20款"}
         assert all(r.source_metadata["canonical_source_row_sha256"] for r in stored)
+        assert all(r.source_published_at.replace(tzinfo=timezone.utc).isoformat() == "2026-10-15T01:01:23+00:00" for r in stored)
         assert all(r.source_published_at.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Taipei")).strftime("%H%M%S") == "090123" for r in stored)
         assert all(r.verification_status == "unverified" for r in stored)
         assert list(session.scalars(select(GraphEdgeRecord))) == []
