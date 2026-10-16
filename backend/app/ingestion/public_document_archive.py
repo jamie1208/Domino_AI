@@ -60,7 +60,8 @@ def archive_document(
         latest.source_type == doc.source_type,
         latest.published_at.date() == date.fromisoformat(doc.published_at),
     ))
-    if same and source_metadata is not None and latest.source_metadata != source_metadata:
+    if same and source_metadata is not None and {k: v for k, v in latest.source_metadata.items() if k != "source_batch_sha256"} !=
+        {k: v for k, v in source_metadata.items() if k != "source_batch_sha256"}:
         raise ValueError("Existing document identity has different source metadata")
     if same and source_published_at is not None and (
         latest.source_published_at is None or
