@@ -34,13 +34,13 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def import_twse_snapshot(session: Session, snapshot: CompanySnapshot) -> CompanyImportReport:
+def import_company_snapshot(session: Session, snapshot: CompanySnapshot) -> CompanyImportReport:
     """Idempotent import; all writes are in one caller-owned transaction.
 
     No implicit commit so callers may atomically coordinate ingestion metadata.
     Do not mix this with a session that is already processing an analysis.
     """
-    repository = CompanyRepository(session)
+    if snapshot.source_url not in (\n        'https://openapi.twse.com.tw/v1/opendata/t187ap03_L',\n        'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O',\n    ):\n        raise ValueError('Company snapshot is not from an approved source')\n    repository = CompanyRepository(session)
     created = 0
     unchanged = 0
     for item in snapshot.profiles:
@@ -50,12 +50,12 @@ def import_twse_snapshot(session: Session, snapshot: CompanySnapshot) -> Company
             .order_by(CompanyRecord.version.desc())
             .limit(1)
         )
-        metadata = {
+        expected_market = "listed" if snapshot.source_url.startswith("https://openapi.twse.com.tw/") else "otc"\n        expected_prefix = "twse-listed:" if expected_market == "listed" else "tpex-otc:"\n        if item.market != expected_market or not item.company_key.startswith(expected_prefix) or item.source_url != snapshot.source_url or item.dataset_url != snapshot.dataset_url:\n            raise ValueError("Snapshot contains mismatched market or source identity")\n        metadata = {
             "industry": item.industry,
             "source_url": item.source_url,
             "dataset_url": item.dataset_url,
             "source_report_date_raw": item.source_report_date_raw,
-            "profile_source": "twse_open_data",
+            "profile_source": "twse_open_data" if expected_market == "listed" else "tpex_open_data",
             # This hash identifies a fetched batch, not a verified source claim.
             "snapshot_sha256": snapshot.payload_sha256,
         }
@@ -85,3 +85,10 @@ def import_twse_snapshot(session: Session, snapshot: CompanySnapshot) -> Company
         rejected_rows=snapshot.rejected_rows,
         source_sha256=snapshot.payload_sha256,
     )
+
+
+def import_twse_snapshot(session: Session, snapshot: CompanySnapshot) -> CompanyImportReport:
+    """Backwards-compatible TWSE-only import entrypoint."""
+    if snapshot.source_url != "https://openapi.twse.com.tw/v1/opendata/t187ap03_L":
+        raise ValueError("Expected TWSE snapshot")
+    return import_company_snapshot(session, snapshot)
