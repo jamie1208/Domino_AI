@@ -102,7 +102,7 @@ def parse_disclosures(payload: bytes, *, retrieved_at: datetime | None = None) -
             continue
         # This batch feed has no durable announcement ID. Fingerprint every
         # canonical source field, including clause, fact date and report date.
-        canonical = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        canonical = json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         row_hash = sha256(canonical.encode("utf-8")).hexdigest()
         document_key = f"twse-material:{code}:{published}:{clock}:{row_hash}"
         if document_key in seen:
@@ -114,7 +114,8 @@ def parse_disclosures(payload: bytes, *, retrieved_at: datetime | None = None) -
             tzinfo=ZoneInfo("Asia/Taipei"),
         )
         metadata_rows.append({
-            "canonical_source_row": normalized,
+            "canonical_source_row": row,
+            "normalized_source_row": normalized,
             "canonical_source_row_sha256": row_hash,
             "speech_date_raw": speech_date,
             "speech_time_raw": speech_time,
