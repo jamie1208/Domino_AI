@@ -40,7 +40,12 @@ def import_company_snapshot(session: Session, snapshot: CompanySnapshot) -> Comp
     No implicit commit so callers may atomically coordinate ingestion metadata.
     Do not mix this with a session that is already processing an analysis.
     """
-    if snapshot.source_url not in (\n        'https://openapi.twse.com.tw/v1/opendata/t187ap03_L',\n        'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O',\n    ):\n        raise ValueError('Company snapshot is not from an approved source')\n    repository = CompanyRepository(session)
+    if snapshot.source_url not in (
+        'https://openapi.twse.com.tw/v1/opendata/t187ap03_L',
+        'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O',
+    ):
+        raise ValueError('Company snapshot is not from an approved source')
+    repository = CompanyRepository(session)
     created = 0
     unchanged = 0
     for item in snapshot.profiles:
@@ -50,7 +55,11 @@ def import_company_snapshot(session: Session, snapshot: CompanySnapshot) -> Comp
             .order_by(CompanyRecord.version.desc())
             .limit(1)
         )
-        expected_market = "listed" if snapshot.source_url.startswith("https://openapi.twse.com.tw/") else "otc"\n        expected_prefix = "twse-listed:" if expected_market == "listed" else "tpex-otc:"\n        if item.market != expected_market or not item.company_key.startswith(expected_prefix) or item.source_url != snapshot.source_url or item.dataset_url != snapshot.dataset_url:\n            raise ValueError("Snapshot contains mismatched market or source identity")\n        metadata = {
+        expected_market = "listed" if snapshot.source_url.startswith("https://openapi.twse.com.tw/") else "otc"
+        expected_prefix = "twse-listed:" if expected_market == "listed" else "tpex-otc:"
+        if item.market != expected_market or not item.company_key.startswith(expected_prefix) or item.source_url != snapshot.source_url or item.dataset_url != snapshot.dataset_url:
+            raise ValueError("Snapshot contains mismatched market or source identity")
+        metadata = {
             "industry": item.industry,
             "source_url": item.source_url,
             "dataset_url": item.dataset_url,
