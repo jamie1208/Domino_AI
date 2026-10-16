@@ -1,0 +1,17 @@
+import { ArrowLeft, Building2, CircleAlert, Route, Shapes } from "lucide-react";
+import { Link } from "react-router-dom";
+import { PageHeading } from "@/components/page-heading";
+import { SyntheticBadge } from "@/components/synthetic-badge";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+
+export function CompanyPage() {
+  return <section className="page-container py-12 sm:py-16"><Link to="/analysis/demo" className="mb-7 inline-flex items-center gap-2 rounded-sm text-sm font-bold hover:underline"><ArrowLeft size={17} />返回範例分析</Link><PageHeading eyebrow="Company Detail · Mock" title="範例元件 A" description="虛構的測試企業詳情，用於確認資訊層級、風險標籤與路徑呈現方式。這不是任何真實公司的資料。" aside={<SyntheticBadge />} />
+    <div className="mt-8 grid gap-8 lg:grid-cols-12"><div className="space-y-7 lg:col-span-8"><Card className="p-7 shadow-pink"><div className="flex flex-col gap-6 sm:flex-row sm:items-start"><div className="grid size-16 shrink-0 place-items-center rounded-md border-2 border-foreground bg-secondary shadow-hard"><Building2 size={30} /></div><div className="flex-1"><p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">合成測試索引</p><div className="mt-2 flex items-end gap-3"><strong className="font-heading text-5xl">78</strong><span className="mb-1 rounded-full border-2 border-foreground bg-secondary px-3 py-1 text-xs font-bold">高暴露</span></div><div className="mt-5 h-4 overflow-hidden rounded-full border-2 border-foreground bg-muted"><div className="h-full w-[78%] bg-secondary" /></div><p className="mt-3 text-xs leading-5 text-muted-foreground">相對模型暴露（合成 fixture），不是實際損害、事件機率、預測或財務建議。</p></div></div></Card>
+        <Card className="p-7"><div className="flex items-center gap-3"><Route className="text-accent" /><h2 className="text-2xl">主要暴露路徑</h2></div><div className="mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center"><PathChip text="供應中斷" color="bg-secondary" /><span className="text-center font-bold">→</span><PathChip text="測試材料產業" color="bg-tertiary" /><span className="text-center font-bold">→</span><PathChip text="範例元件 A" color="bg-quaternary" /></div><div className="mt-6 rounded-md border-2 border-dashed border-foreground bg-muted p-5"><h3 className="text-base">合成說明</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">在此展示案例中，範例元件 A 透過虛構的材料依賴路徑受到情境影響。尚無真實證據或企業關係可供引用。</p></div></Card></div>
+      <aside className="space-y-6 lg:col-span-4"><Card className="p-6"><div className="flex items-center gap-3"><Shapes className="text-accent" /><h2 className="text-xl">企業輪廓</h2></div><dl className="mt-5 divide-y-2 divide-border text-sm"><Row label="資料狀態" value="Mock Data" /><Row label="產業" value="測試零組件" /><Row label="地區" value="虛構地區" /><Row label="關係狀態" value="合成、未驗證" /></dl></Card><Card className="bg-tertiary p-6"><CircleAlert size={24} /><h2 className="mt-3 text-xl">資料提醒</h2><p className="mt-2 text-sm leading-6">沒有揭露不代表不存在關係。正式版本必須經明確證據驗證，才會標記為企業直接關係。</p></Card><Button asChild variant="secondary" className="w-full"><Link to="/simulate">建立另一個情境</Link></Button></aside></div>
+  </section>;
+}
+
+function PathChip({ text, color }: { text: string; color: string }) { return <div className={`flex-1 rounded-md border-2 border-foreground px-3 py-4 text-center text-sm font-bold ${color}`}>{text}</div>; }
+function Row({ label, value }: { label: string; value: string }) { return <div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-bold">{value}</dd></div>; }

@@ -2,7 +2,7 @@
 
 GET `/api/health` → `{ "status": "ok", "mode": "synthetic_fixture" }`
 
-POST `/api/demo/analyze` → Scenario JSON, returns AnalysisResult JSON.
+POST `/api/demo/analyze` → Scenario JSON, returns `GraphAnalysisResult` JSON. The endpoint runs the existing orchestrator and deterministic Python risk engine, then a presentation adapter creates the graph contract.
 
 Example request:
 ```json
@@ -17,9 +17,18 @@ Example request:
 }
 ```
 
+Response fields:
+- `analysis_id`, `analyzed_at`, `model_version`
+- normalized `scenario` and `status`
+- `data_mode` (`synthetic_fixture` in the current demo endpoint)
+- typed `nodes`, `edges`, and `primary_paths`
+- `evidence`, `risk_results`, `findings`, `limitations`, and `explanation`
+
+Graph edge kinds are `verified_direct`, `industry_inferred`, or `unverified_candidate`. Candidate edges always have `included_in_propagation=false`. Fixture industry dependencies remain `industry_inferred`; the adapter never promotes them to direct enterprise relationships.
+
 `status` is `complete`, `insufficient_evidence`, or `invalid_input`.
 The demo URL only uses synthetic, nonverified fixture data; use a separate production endpoint after live public-data adapters exist.
 
-All `relations` have explicit `kind`, `weight`, and `evidence_ids`.
-All `companies` hold `risk_index` and `top_paths`. `risk_index` is a deliberately simplified 0–100 demo index.
-Frontend should display an unmistakable "合成資料／非實際企業分析" label when `data_mode=fixture`.
+All graph `edges` have explicit `kind`, nullable `weight`, `evidence_ids`, and `included_in_propagation`.
+All `risk_results` hold `risk_index` and `top_paths`. `risk_index` is a deliberately simplified 0–100 demo index calculated in Python.
+Frontend should display an unmistakable "合成資料／非實際企業分析" label when `data_mode=synthetic_fixture`.

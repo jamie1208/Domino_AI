@@ -13,11 +13,20 @@ uvicorn app.main:app --reload
 ```
 Open http://127.0.0.1:8000/docs
 
+## Run frontend
+```bash
+cd frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
+The default API base URL is `http://127.0.0.1:8000`; override it with `VITE_API_BASE_URL`.
+
 Demo request:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/demo/analyze \\
   -H 'Content-Type: application/json' \\
-  -d '{"description":"假設材料供應中斷30天","severity":0.8,"seed_nodes":["材料產業"]}'
+  -d '{"description":"假設材料供應中斷30天","event_type":"supply_chain","region":"虛構地區","product":"測試材料","duration_days":30,"severity":0.8,"seed_nodes":["材料產業"]}'
 ```
 
 ## Start with Codex

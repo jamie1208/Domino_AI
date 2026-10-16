@@ -70,3 +70,43 @@ class AnalysisResult(BaseModel):
     model_version: str = 'demo-0.1'
     data_mode: Literal['fixture','verified_public_data'] = 'fixture'
     disclaimer: str = '相對情境指標，非財務損失估計、實際機率或投資建議。'
+
+class GraphNode(BaseModel):
+    id: str
+    kind: Literal['event', 'region', 'product', 'industry', 'company']
+    label: str
+    description: str
+    risk_label: Literal['高暴露', '中度暴露', '低度暴露'] | None = None
+    risk_index: float | None = Field(default=None, ge=0, le=100)
+
+class GraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    kind: Literal['verified_direct', 'industry_inferred', 'unverified_candidate']
+    label: str
+    description: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    included_in_propagation: bool
+    weight: float | None = Field(default=None, ge=0, le=1)
+
+class PrimaryPath(BaseModel):
+    id: str
+    node_ids: list[str]
+    risk_index: float | None = Field(default=None, ge=0, le=100)
+
+class GraphAnalysisResult(BaseModel):
+    analysis_id: str
+    scenario: Scenario
+    status: Literal['complete', 'insufficient_evidence', 'invalid_input']
+    data_mode: Literal['synthetic_fixture', 'verified_public_data']
+    model_version: str
+    analyzed_at: str
+    nodes: list[GraphNode] = Field(default_factory=list)
+    edges: list[GraphEdge] = Field(default_factory=list)
+    primary_paths: list[PrimaryPath] = Field(default_factory=list)
+    evidence: list[Evidence] = Field(default_factory=list)
+    risk_results: list[RiskCompany] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    findings: list[ValidationFinding] = Field(default_factory=list)
+    explanation: str = ''

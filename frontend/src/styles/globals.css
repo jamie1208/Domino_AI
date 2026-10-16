@@ -1,0 +1,55 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 48 100% 98%;
+    --foreground: 217 33% 17%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 258 90% 66%;
+    --secondary: 330 81% 70%;
+    --tertiary: 43 96% 56%;
+    --quaternary: 160 64% 52%;
+    --border: 214 32% 91%;
+    --card: 0 0% 100%;
+  }
+
+  * { @apply border-border; }
+  html { @apply scroll-smooth; }
+  body { @apply m-0 min-w-80 bg-background font-body text-foreground antialiased; }
+  h1, h2, h3, h4 { @apply font-heading; }
+  ::selection { @apply bg-tertiary text-foreground; }
+  :focus-visible { @apply outline-none ring-4 ring-accent/35 ring-offset-2 ring-offset-background; }
+}
+
+@layer components {
+  .page-container { @apply mx-auto w-full max-w-6xl px-5 md:px-8; }
+  .eyebrow { @apply inline-flex items-center gap-2 rounded-full border-2 border-foreground bg-white px-3 py-1 text-xs font-bold uppercase tracking-[0.14em]; }
+  .grid-paper {
+    background-image: linear-gradient(hsl(var(--border) / .55) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border) / .55) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  .react-flow__node { @apply rounded-md; }
+  .react-flow__node:focus-visible,
+  .react-flow__edge:focus-visible { outline: 4px solid hsl(var(--accent) / .45); outline-offset: 4px; }
+  .react-flow__controls { @apply overflow-hidden rounded-md border-2 border-foreground bg-white shadow-hard; }
+  .react-flow__controls-button { @apply !size-11 !border-b-2 !border-foreground !bg-white hover:!bg-muted; }
+  .react-flow__minimap { @apply !rounded-md !border-2 !border-foreground !bg-white; }
+  .react-flow__edge { cursor: pointer; }
+  .react-flow__edge:hover .react-flow__edge-path,
+  .react-flow__edge.selected .react-flow__edge-path { stroke-width: 5; }
+  .important-flow-edge .react-flow__edge-path { filter: drop-shadow(0 2px 1px rgb(139 92 246 / .22)); }
+  .important-node { box-shadow: 4px 4px 0 hsl(var(--foreground)), 0 0 0 4px hsl(var(--tertiary) / .55); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+@media (max-width: 640px) {
+  .react-flow__minimap { display: none; }
+}
