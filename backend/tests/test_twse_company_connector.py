@@ -1,11 +1,13 @@
 """Offline test coverage for TWSE official company profile connector."""
 from datetime import datetime, timedelta, timezone
+import os
 import json
 
 import httpx
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
+from uuid import uuid4
 
 from app.db_models import Base, CompanyRecord, GraphEdgeRecord
 from app.ingestion.twse_companies import import_twse_snapshot
@@ -102,8 +104,61 @@ def test_company_import_idempotent_and_versions_on_meaningful_change():
         assert result2.created_versions == 1
         records = list(session.scalars(select(CompanyRecord).order_by(CompanyRecord.version)))
         assert [r.version for r in records] == [1, 2]
-        assert records[0].valid_to == NOW + timedelta(days=2)
+        assert records[0].valid_to.replace(tzinfo=timezone.utc) == NOW + timedelta(days=2)
         assert records[-1].metadata_json["source_url"] == TWSE_COMPANY_API
         assert records[-1].is_synthetic is False
         assert list(session.scalars(select(GraphEdgeRecord))) == []
+        session.rollback()
+
+
+def test_network_timeout_fails_closed():
+    def handler(request):
+        raise httpx.ReadTimeout("mock timeout", request=request)
+    with pytest.raises(CompanySourceError, match="unavailable"):
+        TWSECompanyConnector(transport=httpx.MockTransport(handler)).fetch()
+
+
+def test_oversized_body_without_content_length_rejected():
+    def handler(request):
+        return httpx.Response(200, content=b"x" * 8_000_001)
+    with pytest.raises(CompanySourceError, match="size budget"):
+        TWSECompanyConnector(transport=httpx.MockTransport(handler)).fetch()
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is required for PostgreSQL integration")
+def test_postgres_company_import_versions_and_rejects_out_of_order_snapshot():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from app.db_models import Base
+
+    # The dedicated TEST_DATABASE_URL must target a disposable test database.
+    engine = create_engine(os.environ["TEST_DATABASE_URL"])
+    ticker = f"test-{uuid4().hex[:16]}"
+    with Session(engine) as session:
+        base = parse_twse_profiles(payload(), retrieved_at=NOW)
+        # Keep the injected synthetic company isolated from production-like rows.
+        from dataclasses import replace
+        synthetic = replace(base.profiles[0], company_key=ticker, ticker=ticker)
+        first = replace(base, profiles=(synthetic,))
+        result = import_twse_snapshot(session, first)
+        assert result.created_versions == 1
+        same = replace(first, retrieved_at=NOW + timedelta(days=1))
+        assert import_twse_snapshot(session, same).unchanged == 1
+        revised = replace(
+            first,
+            retrieved_at=NOW + timedelta(days=2),
+            profiles=(replace(synthetic, name="合成測試公司第二版"),),
+        )
+        assert import_twse_snapshot(session, revised).created_versions == 1
+        versions = list(session.scalars(
+            select(CompanyRecord).where(CompanyRecord.company_key == ticker)
+            .order_by(CompanyRecord.version)
+        ))
+        assert [v.version for v in versions] == [1, 2]
+        assert versions[0].valid_to is not None
+        with pytest.raises(ValueError, match="later"):
+            import_twse_snapshot(session, replace(
+                first, retrieved_at=NOW + timedelta(hours=1),
+                profiles=(replace(synthetic, name="舊資料不應覆寫"),),
+            ))
         session.rollback()
