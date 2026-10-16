@@ -2,6 +2,8 @@
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import json
+import os
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -177,3 +179,31 @@ def test_conflicting_normalized_source_keys_fail_closed():
     row["主旨"] = "另一種標題"
     with pytest.raises(DisclosureSourceError, match="zero valid"):
         parse_disclosures(json.dumps([row], ensure_ascii=False).encode(), retrieved_at=NOW)
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="isolated migrated PostgreSQL schema required")
+def test_postgres_distinct_same_second_disclosures_keep_provenance():
+    original = json.loads(payload())[0]
+    code = "test-" + uuid4().hex[:12]
+    original["公司代號"] = code
+    alternate = {**original, "符合條款": "第20款", "事實發生日": "1150713"}
+    snapshot = parse_disclosures(
+        json.dumps([original, alternate], ensure_ascii=False).encode(),
+        retrieved_at=NOW,
+    )
+    engine = create_engine(os.environ["TEST_DATABASE_URL"])
+    with Session(engine) as session:
+        assert persist_disclosures(session, snapshot)["created_versions"] == 2
+        records = list(session.scalars(
+            select(PublicDocumentRecord)
+            .where(PublicDocumentRecord.company_key == f"twse-listed:{code}")
+        ))
+        assert len(records) == 2
+        assert records[0].source_published_at is not None
+        assert all(row.source_metadata["canonical_source_row"] for row in records)
+        assert len({row.source_metadata["canonical_source_row_sha256"] for row in records}) == 2
+        assert all(row.source_published_at.astimezone(ZoneInfo("Asia/Taipei")).strftime("%H%M%S") == "090123" for row in records)
+        assert list(session.scalars(
+            select(GraphEdgeRecord).where(GraphEdgeRecord.edge_key == f"twse-material:{code}")
+        )) == []
+        session.rollback()
