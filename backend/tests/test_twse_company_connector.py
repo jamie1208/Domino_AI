@@ -119,8 +119,14 @@ def test_network_timeout_fails_closed():
 
 
 def test_oversized_body_without_content_length_rejected():
+    class UnboundedStream(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b"x" * 8_000_001
+
     def handler(request):
-        return httpx.Response(200, content=b"x" * 8_000_001)
+        # A stream, unlike a literal content argument, does not automatically
+        # populate Content-Length.
+        return httpx.Response(200, stream=UnboundedStream())
     with pytest.raises(CompanySourceError, match="size budget"):
         TWSECompanyConnector(transport=httpx.MockTransport(handler)).fetch()
 
@@ -129,7 +135,6 @@ def test_oversized_body_without_content_length_rejected():
 def test_postgres_company_import_versions_and_rejects_out_of_order_snapshot():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
-    from app.db_models import Base
 
     # The dedicated TEST_DATABASE_URL must target a disposable test database.
     engine = create_engine(os.environ["TEST_DATABASE_URL"])
