@@ -184,3 +184,27 @@ class DataChangeLogRecord(Base):
         CheckConstraint("change_type IN ('create','supersede','link','snapshot')", name='ck_change_log_type'),
         Index('ix_change_log_record', 'table_name', 'record_key', 'version'),
     )
+
+
+class SourceIngestionRunRecord(Base):
+    """Immutable record of a successful source fetch/import attempt."""
+    __tablename__ = 'source_ingestion_runs'
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    source_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    dataset_url: Mapped[str] = mapped_column(Text, nullable=False)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    accepted_rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    rejected_rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_versions: Mapped[int] = mapped_column(Integer, nullable=False)
+    unchanged_rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default='success')
+    __table_args__ = (
+        CheckConstraint("status = 'success'", name='ck_source_runs_status'),
+        CheckConstraint('length(payload_sha256) = 64', name='ck_source_runs_hash'),
+        CheckConstraint('accepted_rows >= 0 AND rejected_rows >= 0 AND created_versions >= 0 AND unchanged_rows >= 0', name='ck_source_runs_counts'),
+        Index('ix_source_runs_key_retrieved', 'source_key', 'retrieved_at'),
+    )
