@@ -3,10 +3,12 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import os
+import subprocess
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.db_models import Base, PublicDocumentRecord, DocumentChunkRecord, GraphEdgeRecord
@@ -105,14 +107,33 @@ def test_keyword_retrieval_does_not_certify_supply_relationship():
 def test_keyword_retrieval_excludes_unrelated_text():
     doc = normalize_document(sample(text="合成文件：食品零售業營運情況"))
     bundle = ArchivedDocumentResearchProvider([(doc, split_document(doc.text))]).retrieve(
-        Scenario(description="測試", product="半導體")
+        Scenario(description="測試情境", product="半導體")
     )
     assert bundle.evidence == []
 
 
-@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="isolated PostgreSQL schema required")
-def test_postgres_document_archive_version_and_no_edges():
-    engine = create_engine(os.environ["TEST_DATABASE_URL"])
+@pytest.fixture
+def migrated_postgres_archive_url():
+    """Prepare the explicitly configured disposable test schema before archive checks.
+
+    Never use DATABASE_URL here; a dedicated TEST_DATABASE_URL must be supplied
+    and should point to the isolated PostgreSQL schema managed by the test runner.
+    """
+    raw = os.getenv("TEST_DATABASE_URL")
+    if not raw:
+        pytest.skip("isolated TEST_DATABASE_URL PostgreSQL schema required")
+    if not make_url(raw).drivername.startswith("postgresql"):
+        pytest.skip("PostgreSQL required")
+    env = {**os.environ, "DATABASE_URL": raw}
+    subprocess.run(
+        [".venv/bin/alembic", "upgrade", "head"],
+        env=env, check=True, capture_output=True, text=True,
+    )
+    return raw
+
+
+def test_postgres_document_archive_version_and_no_edges(migrated_postgres_archive_url):
+    engine = create_engine(migrated_postgres_archive_url)
     key = "twse-report:synthetic-" + uuid4().hex[:12]
     with Session(engine) as session:
         doc = sample(document_key=key)
